@@ -285,7 +285,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	up(&ads->fop_sem);
 
 	printk("Entering wait mode\n");
-	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == 3, HZ/100);
+	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == 3, HZ*100);
 	printk("Exit wait mode\n");	
 	devm_free_irq(&ads->chip[0].spi->dev, irq, NULL);
 
