@@ -81,11 +81,10 @@ struct gpio ads129x_gpio_start = { .label = "start-gpio", .flags =GPIOF_OUT_INIT
 
 static void ads129x_spi_handler(void *arg){
 	struct ads129x_dev *ads = arg;
-	//printk(" ### spi isr ###\n");
+	
 	ads->rx_count++;
 
 	if(ads->rx_count == NUM_ADS_CHIPS){
-		printk("Waking up...\n");
 		wake_up_interruptible(&ads->wait_queue);
 	}
 }
@@ -317,7 +316,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	ads->rx_count = 0;
 	ads->sample_req = 1;
 
-	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == NUM_ADS_CHIPS, HZ/100);
+	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == NUM_ADS_CHIPS, HZ*1);
 
 	ads->sample_req = 0;
 
