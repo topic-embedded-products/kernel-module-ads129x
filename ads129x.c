@@ -81,6 +81,7 @@ static void ads129x_spi_handler(void *arg){
 	ads->rx_count++;
 
 	if(ads->rx_count == NUM_ADS_CHIPS){
+		printk("Waking up...\n");
 		wake_up_interruptible(&ads->wait_queue);
 	}
 }
@@ -88,13 +89,12 @@ static void ads129x_spi_handler(void *arg){
 static irqreturn_t ads129x_irq_handler(int irq, void *id)
 {
 	int i;	
-	printk(" ### irq isr  ### "); 
-	disable_irq(irq);	// Single shot
+	printk(" ### irq isr  ### \n"); 
 	for(i=0; i<NUM_ADS_CHIPS; i++){
 		spi_async(ads_inst.chip[i].spi, &ads_inst.chip[i].msg);
 	}
 	printk("Async capture started!\n");
- 
+	//disable_irq(irq);	// Single shot
 	return IRQ_HANDLED;
 }
 
@@ -250,7 +250,7 @@ static loff_t ads_cdev_llseek(struct file *filp, loff_t off, int whence){
 };
 
 static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos){
-	int irq, i, status, bytes_send=0;
+	int irq, i, status, bytes_send=0, ret;
 	struct ads129x_dev *ads = filp->private_data;
 
 	printk("- Read count = %d\n", count);
@@ -259,13 +259,15 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 		return -ERESTARTSYS;
 
 	irq = gpio_to_irq(ads129x_gpio_drdy.gpio);
-//	devm_request_irq(&ads->chip[0].spi->dev, irq, ads129x_irq_handler, 0, "ads192x irq handler", NULL);
-//	irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
-
+	printk("Irq: %d\n", irq);
+	ret = devm_request_irq(&ads->chip[0].spi->dev, irq, ads129x_irq_handler, IRQF_TRIGGER_RISING, "ads192x irq handler", NULL);
+	printk("dbg 1: %d\n", ret);
+	//ret = irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
+	//printk("dbg 2: %d\n", ret);
 
 	for(i = 0; i < NUM_ADS_CHIPS; i++){
 		memset(ads->chip[i].tx_buff, 0, ACQ_BUF_SIZE);
-		//memset(&ads->chip[i].rx_buff, 0, 27);
+		//memset(ads->chip[i].rx_buff, 0, 27);
 		ads->chip[i].transfer.tx_buf = ads->chip[i].tx_buff;
 		ads->chip[i].transfer.rx_buf = ads->chip[i].rx_buff;
 		ads->chip[i].transfer.len = ACQ_BUF_SIZE;
@@ -285,7 +287,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	up(&ads->fop_sem);
 
 	printk("Entering wait mode\n");
-	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == 3, HZ*100);
+	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == NUM_ADS_CHIPS, HZ*10);
 	printk("Exit wait mode\n");	
 	devm_free_irq(&ads->chip[0].spi->dev, irq, NULL);
 
