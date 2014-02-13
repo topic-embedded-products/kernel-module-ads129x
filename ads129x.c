@@ -253,6 +253,8 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	int irq, i, status, bytes_send=0;
 	struct ads129x_dev *ads = filp->private_data;
 
+	printk("- Read count = %d\n", count);
+
 	if (unlikely(down_interruptible(&ads->fop_sem)))
 		return -ERESTARTSYS;
 
