@@ -385,6 +385,8 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 	int cmd_nr = _IOC_NR(cmd);
 	struct ads129x_dev *dev = filp->private_data;
 
+//	printk("IOCTL: %02x\n", cmd);
+
 	if (_IOC_TYPE(cmd) != ADS1298_IOC_MAGIC)
 		return -ENOTTY;
 
@@ -402,6 +404,11 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 		for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
 			// Single byte command without response
 			status = ads_send_byte(&dev->chip[i], cmd_nr);
+		}
+		if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC){
+			gpio_set_value(ads129x_gpio_start.gpio, 1);
+		}else if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_SDATAC){
+			gpio_set_value(ads129x_gpio_start.gpio, 0);
 		}
 	}
 	else
@@ -422,11 +429,7 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 					for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
 						status = ads_send_WREG(&dev->chip[i], (char __user *)arg, cmd_nr, _IOC_SIZE(cmd));
 					};
-					if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC){
-						gpio_set_value(ads129x_gpio_start.gpio, 1);
-					}else if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_SDATAC){
-						gpio_set_value(ads129x_gpio_start.gpio, 0);
-					}
+					
 					break;
 				default:
 					status = -ENOTTY;
