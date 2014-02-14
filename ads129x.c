@@ -202,7 +202,6 @@ static int ads_read_registers(struct ads129x_chip *dev, u8 reg, u8 size)
 	transfer.len = size + 2;
 	spi_message_add_tail(&transfer, &msg);
 	ret = spi_sync(dev->spi, &msg);
-	printk("SPI-Err? ( %d  )\n", ret);
 	return ret;
 }
 
@@ -228,13 +227,10 @@ static int ads_send_WREG(struct ads129x_chip *dev, char __user * buf, u8 reg, u8
 	int status;
         struct spi_message msg = { };
         struct spi_transfer transfer = { };
-printk("func WREG\n" );
 	spi_message_init(&msg);
 	dev->tx_buff[0] = ADS1298_WREG | reg;
 	dev->tx_buff[1] = size-1;
-printk("copy...\n");
 	status = copy_from_user(dev->tx_buff + 2, buf, size);
-printk("done copy!\n");
 	if (likely(status == 0))
 	{
 		transfer.speed_hz = SPI_BUS_SPEED_SLOW;
@@ -242,7 +238,6 @@ printk("done copy!\n");
 		transfer.rx_buf = dev->rx_buff;
 		transfer.len = size + 2;
 		spi_message_add_tail(&transfer, &msg);
-printk("spi sync \n");
 		status = spi_sync(dev->spi, &msg);
 	}
 
@@ -404,7 +399,6 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 
 	if (cmd_nr < ADS1298_RREG)
 	{
-printk("ioctl send_byte\n");
 		for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
 			// Single byte command without response
 			status = ads_send_byte(&dev->chip[i], cmd_nr);
@@ -412,7 +406,6 @@ printk("ioctl send_byte\n");
 	}
 	else
 	{
-printk("ioctl W/R REG\n");
 		if (false /*dev->mode == MODE_RUNNING*/)
 		{
 			printk(KERN_WARNING "Cannot change registers during aquisition, send SDATAC first\n");
@@ -429,6 +422,11 @@ printk("ioctl W/R REG\n");
 					for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
 						status = ads_send_WREG(&dev->chip[i], (char __user *)arg, cmd_nr, _IOC_SIZE(cmd));
 					};
+					if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC){
+						gpio_set_value(ads129x_gpio_start.gpio, 1);
+					}else if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_SDATAC){
+						gpio_set_value(ads129x_gpio_start.gpio, 0);
+					}
 					break;
 				default:
 					status = -ENOTTY;
