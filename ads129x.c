@@ -74,7 +74,7 @@ static struct ads129x_dev ads_inst;
 
 
 struct gpio ads129x_gpio_clksel = { .label = "clksel-gpio", .flags = GPIOF_OUT_INIT_LOW };
-struct gpio ads129x_gpio_drdy = { .label = "drdy-gpio", .flags = GPIOF_IN };
+//struct gpio ads129x_gpio_drdy = { .label = "drdy-gpio", .flags = GPIOF_IN };
 struct gpio ads129x_gpio_pwdn = { .label = "pwdn-gpio", .flags = GPIOF_OUT_INIT_LOW };
 struct gpio ads129x_gpio_reset = { .label = "reset-gpio", .flags = GPIOF_OUT_INIT_LOW };
 struct gpio ads129x_gpio_start = { .label = "start-gpio", .flags =GPIOF_OUT_INIT_LOW };
@@ -130,8 +130,8 @@ static int ads129x_init_gpio_pins(struct ads129x_dev *ads, struct device *dev){
 	if(ads->gpio_initialized == 0){
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_clksel);
 		if(ret < 0){ goto error_exit; }
-		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_drdy);
-		if(ret < 0){ goto error_exit; }
+		//ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_drdy);
+		//if(ret < 0){ goto error_exit; }
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_pwdn); 
 		if(ret < 0){ goto error_exit; }
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_reset);
