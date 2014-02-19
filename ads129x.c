@@ -603,9 +603,6 @@ static int ads129x_probe(struct spi_device *spi)
 	mutex_lock(&ads_inst.mutex);
 
 	printk("Probing spi devive\n");
-	printk("Master: %08x\n",spi->master);
-	printk("Set_CS: %08x\n",spi->master->set_cs);
-
 
 	ret = ads129x_get_free_chip_pointer(&chip);
 	if(ret < 0){
