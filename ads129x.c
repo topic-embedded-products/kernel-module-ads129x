@@ -181,7 +181,7 @@ static int ads_send_byte(struct ads129x_chip *dev, int data){
 	transfer.rx_buf = dev->rx_buff;
 	transfer.len = 1;
 	transfer.speed_hz = SPI_BUS_SPEED_SLOW;
-	transfer.cs_change = 1;
+//	transfer.cs_change = 1;
 	spi_message_add_tail(&transfer, &msg);
 	status = spi_sync(dev->spi, &msg);
 	return status;
@@ -202,7 +202,7 @@ static int ads_read_registers(struct ads129x_chip *dev, u8 reg, u8 size)
 	transfer.tx_buf = dev->tx_buff;
 	transfer.rx_buf = dev->rx_buff;
 	transfer.len = size + 2;
-	transfer.cs_change = 1;
+//	transfer.cs_change = 1;
 	spi_message_add_tail(&transfer, &msg);
 	ret = spi_sync(dev->spi, &msg);
 	return ret;
@@ -241,7 +241,7 @@ static int ads_send_WREG(struct ads129x_chip *dev, char __user * buf, u8 reg, u8
 		transfer.tx_buf = dev->tx_buff;
 		transfer.rx_buf = dev->rx_buff;
 		transfer.len = size + 2;
-		transfer.cs_change = 1;
+//		transfer.cs_change = 1;
 		spi_message_add_tail(&transfer, &msg);
 		status = spi_sync(dev->spi, &msg);
 	}
@@ -262,7 +262,7 @@ static int ads_set_register(struct ads129x_chip *dev, u8 reg, u8 value)
 	transfer.rx_buf = dev->rx_buff;
 	transfer.len = 3;
 	transfer.speed_hz = SPI_BUS_SPEED_SLOW;
-	transfer.cs_change = 1;
+//	transfer.cs_change = 1;
 	spi_message_add_tail(&transfer, &msg);
 	return spi_sync(dev->spi, &msg);
 }
@@ -300,7 +300,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 		ads->chip[i].transfer.rx_buf = ads->chip[i].rx_buff;
 		ads->chip[i].transfer.len = ACQ_BUF_SIZE;
 		ads->chip[i].transfer.speed_hz = SPI_BUS_SPEED_FAST;
-		ads->chip[i].transfer.cs_change = 1;
+//		ads->chip[i].transfer.cs_change = 1;
 		spi_message_init(&ads->chip[i].msg);
 		spi_message_add_tail(&ads->chip[i].transfer, &ads->chip[i].msg);
 		ads->chip[i].msg.context = ads;
@@ -375,7 +375,7 @@ static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t 
 			transfer.rx_buf = dev->chip[i].rx_buff;
 			transfer.len = count;
 			transfer.speed_hz = SPI_BUS_SPEED_SLOW;
-			transfer.cs_change = 1;
+//			transfer.cs_change = 1;
 			spi_message_add_tail(&transfer, &msg);
 			status = spi_sync(dev->chip[i].spi, &msg);
 			if (status == 0)
