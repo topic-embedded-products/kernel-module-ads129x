@@ -39,7 +39,7 @@
  * of transfer */
 #define SPI_BUS_SPEED_SLOW	2048000
 
-#define NUM_ADS_CHIPS		1	
+#define MAX_ADS_CHIPS		1	
 
 #define ACQ_BUF_SIZE		27
 
@@ -60,7 +60,8 @@ struct ads129x_dev {
 
 	struct mutex mutex;
 
-	struct ads129x_chip chip[NUM_ADS_CHIPS];
+	struct ads129x_chip chip[MAX_ADS_CHIPS];
+	int num_ads_chips;
 	wait_queue_head_t wait_queue;
 	int rx_count;
 	int irq;
@@ -84,7 +85,7 @@ static void ads129x_spi_handler(void *arg){
 	
 	ads->rx_count++;
 
-	if(ads->rx_count == NUM_ADS_CHIPS){
+	if(ads->rx_count == ads->num_ads_chips){
 		wake_up_interruptible(&ads->wait_queue);
 	}
 }
@@ -97,7 +98,7 @@ static irqreturn_t ads129x_irq_handler(int irq, void *id)
 		return IRQ_HANDLED;
 	}
 	
-	for(i=0; i<NUM_ADS_CHIPS; i++){
+	for(i=0; i<ads_inst.num_ads_chips; i++){
 		spi_async(ads_inst.chip[i].spi, &ads_inst.chip[i].msg);
 	}
 	return IRQ_HANDLED;
@@ -210,9 +211,10 @@ static int ads_read_registers(struct ads129x_chip *dev, u8 reg, u8 size)
 
 static int ads_send_RREG(struct ads129x_dev *dev, char __user * buf, u8 reg, u8 size)
 {
-	int status, i;
+	int status = -ENODEV;
+	int i;
 
-	for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
+	for(i = (dev->num_ads_chips-1); i >= 0; i--){
 		status = ads_read_registers(&dev->chip[i], reg, size);
 	}
 
@@ -291,7 +293,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	//ret = irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
 	//printk("dbg 2: %d\n", ret);
 
-	for(i = 0; i < NUM_ADS_CHIPS; i++){
+	for(i = 0; i < ads->num_ads_chips; i++){
 		memset(ads->chip[i].tx_buff, 0, ACQ_BUF_SIZE);
 		//memset(ads->chip[i].rx_buff, 0, 27);
 		ads->chip[i].transfer.tx_buf = ads->chip[i].tx_buff;
@@ -311,12 +313,12 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	gpio_set_value(ads129x_gpio_start.gpio, 1);
 	up(&ads->fop_sem);
 	
-	while(bytes_send <= (count - (NUM_ADS_CHIPS * ACQ_BUF_SIZE))){
+	while(bytes_send <= (count - (ads->num_ads_chips * ACQ_BUF_SIZE))){
 	
 	ads->rx_count = 0;
 	ads->sample_req = 1;
 
-	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == NUM_ADS_CHIPS, HZ*1);
+	status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == ads->num_ads_chips, HZ*1);
 
 	ads->sample_req = 0;
 
@@ -326,7 +328,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 			status = -ETIMEDOUT; /* 1s without any data -> report timeout*/
 		goto read_error;
 	}
-	for(i=0; i<NUM_ADS_CHIPS; i++){
+	for(i=0; i<ads->num_ads_chips; i++){
 		if (unlikely(copy_to_user(&buf[bytes_send], ads->chip[i].rx_buff, ACQ_BUF_SIZE)))
 		{
 			status = -EFAULT;
@@ -346,7 +348,8 @@ read_error:
 };
 
 static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos){
-	int status, i;
+	int status = -ENODEV;
+	int i;
 	struct ads129x_dev *dev = filp->private_data;
 	struct spi_message msg;
 	struct spi_transfer transfer;
@@ -360,7 +363,7 @@ static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t 
 	if (count > SPI_BUFF_SIZE)
 		count = SPI_BUFF_SIZE;
 
-	for(i = 0; i < NUM_ADS_CHIPS; i++){
+	for(i = 0; i < dev->num_ads_chips; i++){
 		if (unlikely(copy_from_user(dev->chip[i].tx_buff, buf, count)))
 		{
 			status = -EFAULT;
@@ -387,7 +390,8 @@ static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t 
 };
 
 static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
-	int status, i;
+	int status = -ENODEV;
+	int i;
 	int cmd_nr = _IOC_NR(cmd);
 	struct ads129x_dev *dev = filp->private_data;
 
@@ -407,7 +411,7 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 
 	if (cmd_nr < ADS1298_RREG)
 	{
-		for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
+		for(i = (dev->num_ads_chips-1); i >= 0; i--){
 			// Single byte command without response
 			status = ads_send_byte(&dev->chip[i], cmd_nr);
 		}
@@ -432,7 +436,7 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 					status = ads_send_RREG(dev, (char __user *)arg, cmd_nr, _IOC_SIZE(cmd));
 					break;
 				case ADS1298_WREG:
-					for(i = (NUM_ADS_CHIPS-1); i >= 0; i--){
+					for(i = (dev->num_ads_chips-1); i >= 0; i--){
 						status = ads_send_WREG(&dev->chip[i], (char __user *)arg, cmd_nr, _IOC_SIZE(cmd));
 					};
 					
@@ -473,7 +477,7 @@ static int ads_cdev_open(struct inode *inode, struct file *filp){
 
 	udelay(10);	// Wait for reset (>18 clks)
 
-	for(i=0; i< NUM_ADS_CHIPS; i++){
+	for(i=0; i< ads->num_ads_chips; i++){
 		printk("Testing chip %d\n", i);
 		ads_send_byte(&ads->chip[i], ADS1298_SDATAC);
 		/* Check if chip is okay */
@@ -519,7 +523,7 @@ static int ads_cdev_release(struct inode *inode, struct file *filp){
 	//ads_stop_aquisition(dev);
 	gpio_set_value(ads129x_gpio_start.gpio, 0);
 
-	for(i=0; i < NUM_ADS_CHIPS; i++){
+	for(i=0; i < dev->num_ads_chips; i++){
 		ads_set_register(&dev->chip[i], 0x03, 0b11100000);
 		ads_send_byte(&dev->chip[i], ADS1298_STANDBY);
 	}
@@ -586,7 +590,7 @@ error_exit:
 
 static int ads129x_get_free_chip_pointer(struct ads129x_chip **c){
 	int i;
-	for(i=0; i < NUM_ADS_CHIPS; i++){
+	for(i=0; i < MAX_ADS_CHIPS; i++){
 		if(ads_inst.chip[i].spi == NULL){
 			*c = &ads_inst.chip[i];
 			return 0;
@@ -602,7 +606,7 @@ static int ads129x_probe(struct spi_device *spi)
 
 	mutex_lock(&ads_inst.mutex);
 
-	printk("Probing spi devive\n");
+	printk("Probing spi device\n");
 
 	ret = ads129x_get_free_chip_pointer(&chip);
 	if(ret < 0){
@@ -629,6 +633,8 @@ static int ads129x_probe(struct spi_device *spi)
 	if(ret < 0){ 
 		goto error_exit;
 	}
+	ads_inst.num_ads_chips++;
+	printk("ADS Chip registered! ( %d chips total)\n", ads_inst.num_ads_chips);
 
 	mutex_unlock(&ads_inst.mutex);
 	return 0;
@@ -640,8 +646,10 @@ error_exit:
 
 static int ads129x_remove(struct spi_device *spi)
 {
-
-	printk("REMOVE ADS!!!!\n");
+	mutex_lock(&ads_inst.mutex);
+	ads_inst.num_ads_chips--;
+	mutex_unlock(&ads_inst.mutex);
+	printk("ADS Remove: %d chips left!\n", ads_inst.num_ads_chips);
 	return 0;
 }
 
@@ -674,8 +682,9 @@ static int __init ads129x_init(void)
 
 	ads_inst.gpio_initialized = 0;
 	ads_inst.sample_req = 0;
+	ads_inst.num_ads_chips = 0;
 
-	for(i=0; i < NUM_ADS_CHIPS; i++){
+	for(i=0; i < MAX_ADS_CHIPS; i++){
 		ads_inst.chip[i].spi = NULL;
 	}	
 	
