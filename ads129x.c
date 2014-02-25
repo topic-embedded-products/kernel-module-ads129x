@@ -39,7 +39,7 @@
  * of transfer */
 #define SPI_BUS_SPEED_SLOW	2048000
 
-#define MAX_ADS_CHIPS		1	
+#define MAX_ADS_CHIPS		3	
 
 #define ACQ_BUF_SIZE		27
 
