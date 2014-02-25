@@ -457,19 +457,21 @@ static int ads_cdev_open(struct inode *inode, struct file *filp){
 	printk("File open..\n");
 
 	filp->private_data = ads;
-
+	
+	printk("gpio: %d\n", ads129x_gpio_pwdn.gpio);
+	printk("gpio: %d\n", ads129x_gpio_reset.gpio);
 	// Power up ADS chip(s)
 	gpio_set_value(ads129x_gpio_pwdn.gpio, 1);
 	gpio_set_value(ads129x_gpio_reset.gpio, 1);
 
-	msleep(1);	// Wait for power on
+	msleep(3000);	// Wait for power on
 
 	// Reset pulse
 	gpio_set_value(ads129x_gpio_reset.gpio, 0);
 	udelay(10);
 	gpio_set_value(ads129x_gpio_reset.gpio, 1);
 
-	udelay(10);	// Wait for reset (>18 clks)
+	//udelay(10);	// Wait for reset (>18 clks)
 
 	for(i=0; i< ads->num_ads_chips; i++){
 		printk("Testing chip %d\n", i);
@@ -478,7 +480,7 @@ static int ads_cdev_open(struct inode *inode, struct file *filp){
 		ads_read_registers(&ads->chip[i], 0x00, 1);
 		if (unlikely(ads->chip[i].rx_buff[2] != 0x92))
 		{
-			printk(KERN_WARNING "Bad chip[%d] ID, 0x%x is not a ads1298\n", i, ads->chip[i].rx_buff[2]);
+			printk(KERN_WARNING "Bad chip[%d] ID, 0x%x is not an ads1298\n", i, ads->chip[i].rx_buff[2]);
 			status = -ENODEV;
 		}
 		else
