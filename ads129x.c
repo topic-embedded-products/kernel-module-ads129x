@@ -174,7 +174,7 @@ static int ads_send_byte(struct ads129x_chip *dev, int data){
 	int status;
 	struct spi_message msg = { };
 	struct spi_transfer transfer = { };
-//printk("sendByte(%08x, %08x, %08x, %08x)\n", dev, dev->spi, dev->tx_buff, dev->rx_buff);	
+
 	spi_message_init(&msg);
 	dev->tx_buff[0] = data;
 	transfer.tx_buf = dev->tx_buff;
@@ -183,6 +183,7 @@ static int ads_send_byte(struct ads129x_chip *dev, int data){
 	transfer.speed_hz = SPI_BUS_SPEED_SLOW;
 	spi_message_add_tail(&transfer, &msg);
 	status = spi_sync(dev->spi, &msg);
+
 	return status;
 };
 
@@ -332,7 +333,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 		bytes_send += ACQ_BUF_SIZE;
 	}
 
-	}; // End while	
+	};
 
 	*f_pos += bytes_send;
 
@@ -458,23 +459,21 @@ static int ads_cdev_open(struct inode *inode, struct file *filp){
 
 	filp->private_data = ads;
 	
-	printk("gpio: %d\n", ads129x_gpio_pwdn.gpio);
-	printk("gpio: %d\n", ads129x_gpio_reset.gpio);
 	// Power up ADS chip(s)
 	gpio_set_value(ads129x_gpio_pwdn.gpio, 1);
 	gpio_set_value(ads129x_gpio_reset.gpio, 1);
 
-	msleep(3000);	// Wait for power on
+	msleep(1000);	// Wait for power on
 
 	// Reset pulse
 	gpio_set_value(ads129x_gpio_reset.gpio, 0);
 	udelay(10);
 	gpio_set_value(ads129x_gpio_reset.gpio, 1);
 
-	//udelay(10);	// Wait for reset (>18 clks)
+	udelay(10);	// Wait for reset (>18 clks)
 
 	for(i=0; i< ads->num_ads_chips; i++){
-		printk("Testing chip %d\n", i);
+		//printk("Testing chip %d\n", i);
 		ads_send_byte(&ads->chip[i], ADS1298_SDATAC);
 		/* Check if chip is okay */
 		ads_read_registers(&ads->chip[i], 0x00, 1);
@@ -485,7 +484,7 @@ static int ads_cdev_open(struct inode *inode, struct file *filp){
 		}
 		else
 		{
-			printk("ok, setting registers\n");
+			//printk("ok, setting registers\n");
 			/* Set high-resolution mode (not low power)
 			* Enable multiple-readback mode (disable daisy-chain)
 			* 1kHz sampling freq */
@@ -609,7 +608,6 @@ static int ads129x_probe(struct spi_device *spi)
 		printk("Error, no ads_chip structure available!\n");
 		goto error_exit;
 	}
-	chip = &ads_inst.chip[ret];
 
 	chip->spi = spi;
 
