@@ -208,18 +208,17 @@ static int ads_read_registers(struct ads129x_chip *dev, u8 reg, u8 size)
 }
 
 
-static int ads_send_RREG(struct ads129x_dev *dev, char __user * buf, u8 reg, u8 size)
+static int ads_send_RREG(struct ads129x_chip *chip, char __user * buf, u8 reg, u8 size, int copy)
 {
-	int status = -ENODEV;
-	int i;
+	int status;
 
-	for(i = (dev->num_ads_chips-1); i >= 0; i--){
-		status = ads_read_registers(&dev->chip[i], reg, size);
-	}
+	status = ads_read_registers(chip, reg, size);
 
-	if (likely(status == 0))
-	{
-		status = copy_to_user(buf, dev->chip[0].rx_buff + 2, size);
+	if(copy){
+		if (likely(status == 0))
+		{
+			status = copy_to_user(buf, chip->rx_buff + 2, size);
+		}
 	}
 
 	return status;
@@ -387,8 +386,20 @@ static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t 
 static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	int status = -ENODEV;
 	int i;
-	int cmd_nr = _IOC_NR(cmd);
+	int cmd_nr = _IOC_NR(cmd) & 0x7F;
+	int cmd_size = _IOC_SIZE(cmd) & ADS1298_SIZE_MASK;
+	
+	int single_dev = (_IOC_NR(cmd) & ADS1298_SINGLE_DEV_CTRL) ? 1 : 0;
+	int dev_id =  (_IOC_SIZE(cmd) & 0xE0) >> 5;
+
 	struct ads129x_dev *dev = filp->private_data;
+
+	if(dev_id >= dev->num_ads_chips){
+		printk("Device %d does not exist! Invalid command!\n", dev_id);
+		return -ENODEV;
+	}
+
+	printk("IOCTL: cmd=%d, size=%d, single=%d, dev_id=%d\n", cmd_nr, cmd_size, single_dev, dev_id);
 
 //	printk("IOCTL: %02x\n", cmd);
 
@@ -406,9 +417,13 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 
 	if (cmd_nr < ADS1298_RREG)
 	{
-		for(i = (dev->num_ads_chips-1); i >= 0; i--){
-			// Single byte command without response
-			status = ads_send_byte(&dev->chip[i], cmd_nr);
+		if(single_dev){
+			status = ads_send_byte(&dev->chip[dev_id], cmd_nr);
+		}else{
+			for(i = (dev->num_ads_chips-1); i >= 0; i--){
+				// Single byte command without response
+				status = ads_send_byte(&dev->chip[i], cmd_nr);
+			}
 		}
 		if((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC){
 			gpio_set_value(ads129x_gpio_start.gpio, 1);
@@ -428,11 +443,20 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 			switch (cmd_nr & (ADS1298_RREG | ADS1298_WREG))
 			{
 				case ADS1298_RREG:
-					status = ads_send_RREG(dev, (char __user *)arg, cmd_nr, _IOC_SIZE(cmd));
+					if(single_dev){
+						status = ads_send_RREG(&dev->chip[dev_id], (char __user *)arg, cmd_nr, cmd_size, 1);
+					}else{
+						for(i = (dev->num_ads_chips-1); i >= 0; i--)
+							status = ads_send_RREG(&dev->chip[i], (char __user *)arg, cmd_nr, cmd_size, (i == 0) ? 1 : 0);
+					};
 					break;
 				case ADS1298_WREG:
-					for(i = (dev->num_ads_chips-1); i >= 0; i--){
-						status = ads_send_WREG(&dev->chip[i], (char __user *)arg, cmd_nr, _IOC_SIZE(cmd));
+					if(single_dev){
+						status = ads_send_WREG(&dev->chip[dev_id], (char __user *)arg, cmd_nr, cmd_size);
+					}else{
+						for(i = (dev->num_ads_chips-1); i >= 0; i--){
+							status = ads_send_WREG(&dev->chip[i], (char __user *)arg, cmd_nr, cmd_size);
+						};
 					};
 					
 					break;
