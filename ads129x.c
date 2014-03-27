@@ -399,7 +399,7 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 		return -ENODEV;
 	}
 
-	printk("IOCTL: cmd=%d, size=%d, single=%d, dev_id=%d\n", cmd_nr, cmd_size, single_dev, dev_id);
+//	printk("IOCTL: cmd=%d, size=%d, single=%d, dev_id=%d\n", cmd_nr, cmd_size, single_dev, dev_id);
 
 //	printk("IOCTL: %02x\n", cmd);
 
