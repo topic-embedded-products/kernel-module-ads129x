@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <fcntl.h>      /* open */
 #include <unistd.h>     /* exit */
 #include <stdio.h>
@@ -60,12 +61,13 @@ static int set_test_mode(int ads129x_fd)
 
 static void usage(const char* name)
 {
-	fprintf(stderr, "usage: %s [-d device] [-h] [-n|-t] [-s] ...\n"
+	fprintf(stderr, "usage: %s [-d device] [-h] [-n|-t] [-s] [-r] ...\n"
 		" -d    Device node file (default %s).\n"
 		" -t    Set standard test mode.\n"
 		" -n    Set normal mode.\n"
 		" -s    Start aquisition (after setting options).\n"
 		" -h    Stop aquisition (before setting options).\n"
+		" -r    Read binary data from device.\n"
 		" ...   Other arguments ignored for now, not implemented yet.\n",
 		name, default_file_name);
 }
@@ -76,6 +78,8 @@ static int exit_perror(const char* context)
 	return 1;
 }
 
+
+
 int main(int argc, char** argv)
 {
 	int opt;
@@ -84,7 +88,7 @@ int main(int argc, char** argv)
 	int stop = 0;
 	int start = 0;
 	int fd;
-	while ((opt = getopt(argc, argv, "d:hnst")) != -1)
+	while ((opt = getopt(argc, argv, "d:hnrst")) != -1)
 	{
 		switch (opt)
 		{
@@ -98,8 +102,9 @@ int main(int argc, char** argv)
 			case 'h':
 				stop = 1;
 				break;
+			case 'r':
 			case 's':
-				start = 1;
+				start = opt;
 				break;
 			default:
 				usage(argv[0]);
@@ -124,8 +129,28 @@ int main(int argc, char** argv)
 			break;
 	}
 	if (start)
+	{
 		if (start_acquisition(fd) < 0)
 			return exit_perror("start_acquisition");
-	close(fd);
+		if (start == 'r')
+		{
+			const size_t buffer_size = 1024;
+			void* buffer = malloc(buffer_size);
+			for (;;)
+			{
+				ssize_t bytes = read(fd, buffer, buffer_size);
+				if (bytes == 0)
+					break;
+				if (bytes < 0)
+					return exit_perror("read");
+				if (write(1, buffer, bytes) < 0)
+					return exit_perror("write");
+			}
+			free(buffer);
+			return 0;
+		}
+	}
+	read(0, &opt, 1); /* Wait for input */
+	close(fd); /* Close will turn off power to the chips */
 	return 0;
 }
