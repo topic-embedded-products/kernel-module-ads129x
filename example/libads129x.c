@@ -38,5 +38,5 @@ int ads129x_set_test_mode(int ads129x_fd)
 
 int ads129x_set_registers(int ads129x_fd, int offset, char* data, int count)
 {
-	return ioctl(ads129x_fd, _IOC(0, ADS1298_IOC_MAGIC, ADS1298_WREG | offset, count), reg_set_1);
+	return ioctl(ads129x_fd, _IOC(0, ADS1298_IOC_MAGIC, ADS1298_WREG | offset, count), data);
 }
