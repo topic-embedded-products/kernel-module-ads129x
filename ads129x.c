@@ -441,9 +441,9 @@ static int ads_cdev_open(struct inode *inode, struct file *filp)
 	}
 	filp->private_data = ads;
 	/* Power up ADS chip(s) */
-	gpio_set_value(ads129x_gpio_pwdn.gpio, 1);
 	gpio_set_value(ads129x_gpio_reset.gpio, 1);
-	msleep(1000);	// Wait for power on
+	gpio_set_value(ads129x_gpio_pwdn.gpio, 1);
+	msleep(20);	// Wait for power on
 	// Reset pulse
 	gpio_set_value(ads129x_gpio_reset.gpio, 0);
 	udelay(10);
