@@ -71,7 +71,6 @@ struct ads129x_dev {
 static struct ads129x_dev ads_inst;
 
 
-struct gpio ads129x_gpio_clksel = { .label = "clksel-gpio", .flags = GPIOF_OUT_INIT_LOW };
 struct gpio ads129x_gpio_pwdn = { .label = "pwdn-gpio", .flags = GPIOF_OUT_INIT_LOW };
 struct gpio ads129x_gpio_reset = { .label = "reset-gpio", .flags = GPIOF_OUT_INIT_LOW };
 struct gpio ads129x_gpio_start = { .label = "start-gpio", .flags =GPIOF_OUT_INIT_LOW };
@@ -108,12 +107,12 @@ static int ads129x_init_io_from_dt(struct device *dev, struct gpio *pgpio){
 
 	pgpio->gpio = of_get_named_gpio(np, pgpio->label, 0);
 	pr_debug("%s: %d\n", pgpio->label, pgpio->gpio);
-	if(!gpio_is_valid(pgpio->gpio)){
+	if(!gpio_is_valid(pgpio->gpio)) {
 		dev_err(dev, "Invalid gpio\n");
 		return -EINVAL;
-	}else{
+	} else {
 		ret = devm_gpio_request_one(dev, pgpio->gpio, pgpio->flags, pgpio->label);
-		if(ret < 0){
+		if(ret < 0) {
 			dev_err(dev, "Error requesting gpio %s:%d.\n",
 				pgpio->label, pgpio->gpio);
 			return ret;
@@ -127,14 +126,15 @@ static int ads129x_init_gpio_pins(struct ads129x_dev *ads, struct device *dev){
 	int ret;
 
 	if(ads->gpio_initialized == 0) {
-		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_clksel);
-		if(ret < 0){ goto error_exit; }
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_pwdn);
-		if(ret < 0){ goto error_exit; }
+		if(ret < 0)
+			goto error_exit;
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_reset);
-		if(ret < 0){ goto error_exit; }
+		if(ret < 0)
+			goto error_exit;
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_start);
-		if(ret < 0){ goto error_exit; }
+		if(ret < 0)
+			goto error_exit;
 
 		ads->irq = irq_of_parse_and_map(of_get_child_by_name(dev->of_node, "rdy-irq"), 0);
         if (ads->irq < 0) {
@@ -429,38 +429,53 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 	return status;
 };
 
+static void ads_power(int mode)
+{
+	gpio_set_value(ads129x_gpio_reset.gpio, mode);
+	gpio_set_value(ads129x_gpio_pwdn.gpio, mode);
+}
+
 static int ads_cdev_open(struct inode *inode, struct file *filp)
 {
-	int status = 0;
-	int i;
+	int status;
 	struct ads129x_dev *ads = container_of(inode->i_cdev, struct ads129x_dev, dev);
+	int i;
+	int retries = 3;
 
 	pr_debug("%s\n", __func__);
-	if (down_interruptible(&ads->fop_sem)){
+	if (down_interruptible(&ads->fop_sem))
 		return -ERESTARTSYS;
-	}
-	filp->private_data = ads;
-	/* Power up ADS chip(s) */
-	gpio_set_value(ads129x_gpio_reset.gpio, 1);
-	gpio_set_value(ads129x_gpio_pwdn.gpio, 1);
-	msleep(20);	// Wait for power on
-	// Reset pulse
-	gpio_set_value(ads129x_gpio_reset.gpio, 0);
-	udelay(10);
-	gpio_set_value(ads129x_gpio_reset.gpio, 1);
-	udelay(10);	// Wait for reset (>18 clks)
 
-	for(i=0; i< ads->num_ads_chips; i++){
-		ads_send_byte(&ads->chip[i], ADS1298_SDATAC);
-		/* Check if chip is okay */
-		ads_read_registers(&ads->chip[i], 0x00, 1);
-		if (unlikely(ads->chip[i].rx_buff[2] != 0x92))
-		{
-			printk(KERN_WARNING "Bad chip[%d] ID, 0x%x is not an ads1298\n", i, ads->chip[i].rx_buff[2]);
-			status = -ENODEV;
+	filp->private_data = ads;
+
+	gpio_set_value(ads129x_gpio_start.gpio, 0);
+	ads_power(1); /* Power up ADS chip(s) */
+	do {
+		status = 0;
+		msleep(20);	/* Wait for power on, or just delay on retry */
+		/* Reset pulse */
+		gpio_set_value(ads129x_gpio_reset.gpio, 0);
+		udelay(10);
+		gpio_set_value(ads129x_gpio_reset.gpio, 1);
+		udelay(10);	// Wait for reset (>18 clks)
+
+		for(i=0; i< ads->num_ads_chips; i++) {
+			ads_send_byte(&ads->chip[i], ADS1298_SDATAC);
+			/* Check if chip is okay */
+			ads_read_registers(&ads->chip[i], 0x00, 1);
+			if (unlikely(ads->chip[i].rx_buff[2] != 0x92))
+			{
+				printk(KERN_WARNING "Bad chip[%d] ID, 0x%x is not an ads1298\n", i, ads->chip[i].rx_buff[2]);
+				status = -ENODEV;
+			}
 		}
-		else
-		{
+	} while ((status != 0) && (--retries));
+
+	if (status < 0) {
+		/* power off the device */
+		ads_power(0);
+	} else {
+		for(i=0; i< ads->num_ads_chips; i++){
 			/* Set high-resolution mode (not low power)
 			* Enable multiple-readback mode (disable daisy-chain)
 			* 1kHz sampling freq */
@@ -468,13 +483,6 @@ static int ads_cdev_open(struct inode *inode, struct file *filp)
 			/* Enable internal VREF buffer, VREF=4V */
 			ads_set_register(&ads->chip[i], 0x03, 0b11100000);
 		}
-	}
-
-	if (status < 0)
-	{
-		/* power off the device */
-		gpio_set_value(ads129x_gpio_pwdn.gpio, 0);
-		gpio_set_value(ads129x_gpio_reset.gpio, 0);
 	}
 
 	up(&ads->fop_sem);
@@ -490,18 +498,14 @@ static int ads_cdev_release(struct inode *inode, struct file *filp)
 	if (down_interruptible(&dev->fop_sem))
 		return -ERESTARTSYS;
 	gpio_set_value(ads129x_gpio_start.gpio, 0);
-
-	for(i=0; i < dev->num_ads_chips; i++){
+	for(i=0; i < dev->num_ads_chips; i++) {
 		ads_set_register(&dev->chip[i], 0x03, 0b11100000);
 		ads_send_byte(&dev->chip[i], ADS1298_STANDBY);
 	}
-	gpio_set_value(ads129x_gpio_pwdn.gpio, 0); // Switch off the power
-	gpio_set_value(ads129x_gpio_reset.gpio, 0); // Switch off the power
-
+	ads_power(0);
 	up(&dev->fop_sem);
 	return 0;
 };
-
 
 static const struct file_operations fops = {
 	.owner = THIS_MODULE,
