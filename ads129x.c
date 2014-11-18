@@ -63,7 +63,7 @@ struct ads129x_dev {
 	int rx_count;
 	int irq;
 
-	int sample_req;
+	volatile int sample_req;
 
 	int gpio_initialized;
 };
@@ -80,6 +80,7 @@ static void ads129x_spi_handler(void *arg)
 	struct ads129x_dev *ads = arg;
 
 	ads->rx_count++;
+	pr_debug("%s rx_count=%d\n", __func__, ads->rx_count);
 	if (ads->rx_count == ads->num_ads_chips)
 		wake_up_interruptible(&ads->wait_queue);
 }
@@ -91,6 +92,7 @@ static irqreturn_t ads129x_irq_handler(int irq, void *id)
 	if (!ads_inst.sample_req)
 		return IRQ_HANDLED;
 
+	pr_debug("%s\n", __func__);
 	for (i=0; i<ads_inst.num_ads_chips; i++) {
 		spi_async(ads_inst.chip[i].spi, &ads_inst.chip[i].msg);
 	}
@@ -248,6 +250,7 @@ static int ads_set_register(struct ads129x_chip *dev, u8 reg, u8 value)
 	transfer.len = 3;
 	transfer.speed_hz = SPI_BUS_SPEED_SLOW;
 	spi_message_add_tail(&transfer, &msg);
+	pr_debug("%s(%#x) %#x\n", __func__, reg, dev->tx_buff[2]);
 	return spi_sync(dev->spi, &msg);
 }
 
