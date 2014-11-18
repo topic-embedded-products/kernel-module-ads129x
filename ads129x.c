@@ -135,14 +135,14 @@ static int ads129x_init_gpio_pins(struct ads129x_dev *ads, struct device *dev)
 			goto error_exit;
 
 		ads->irq = irq_of_parse_and_map(of_get_child_by_name(dev->of_node, "rdy-irq"), 0);
-        if (ads->irq < 0) {
+		if (ads->irq < 0) {
 			dev_err(dev, "IRQ resource missing\n");
 			ret = -EINVAL;
 			goto error_exit;
 		} else
 			pr_debug("IRQ: %d\n", ads->irq);
-        ret = request_irq(ads->irq, ads129x_irq_handler, 0, "ads129x-drdy", NULL);
-       	if (ret) {
+		ret = request_irq(ads->irq, ads129x_irq_handler, 0, "ads129x-drdy", NULL);
+		if (ret) {
 			dev_err(dev, "Cannot claim IRQ %d\n", ads->irq);
 			ret = -EINVAL;
 			goto error_exit;
@@ -162,6 +162,8 @@ static int ads_send_byte(struct ads129x_chip *dev, int data)
 	int status;
 	struct spi_message msg = { };
 	struct spi_transfer transfer = { };
+
+	pr_debug("%s(%#x)\n", __func__, data);
 
 	spi_message_init(&msg);
 	dev->tx_buff[0] = data;
@@ -196,15 +198,14 @@ static int ads_read_registers(struct ads129x_chip *dev, u8 reg, u8 size)
 }
 
 
-static int ads_send_RREG(struct ads129x_chip *chip, char __user * buf, u8 reg, u8 size, int copy)
+static int ads_send_RREG(struct ads129x_chip *chip, char __user * buf, u8 reg, u8 size)
 {
 	int status;
 
 	status = ads_read_registers(chip, reg, size);
-	if (copy) {
-		if (likely(status == 0))
-			status = copy_to_user(buf, chip->rx_buff + 2, size);
-	}
+	if (unlikely(status))
+		return status;
+	status = copy_to_user(buf, chip->rx_buff + 2, size);
 	return status;
 }
 
@@ -213,19 +214,23 @@ static int ads_send_WREG(struct ads129x_chip *dev, char __user * buf, u8 reg, u8
 	int status;
 	struct spi_message msg = { };
 	struct spi_transfer transfer = { };
+
 	spi_message_init(&msg);
 	dev->tx_buff[0] = ADS1298_WREG | reg;
 	dev->tx_buff[1] = size-1;
 	status = copy_from_user(dev->tx_buff + 2, buf, size);
-	if (likely(status == 0))
-	{
-		transfer.speed_hz = SPI_BUS_SPEED_SLOW;
-		transfer.tx_buf = dev->tx_buff;
-		transfer.rx_buf = dev->rx_buff;
-		transfer.len = size + 2;
-		spi_message_add_tail(&transfer, &msg);
-		status = spi_sync(dev->spi, &msg);
-	}
+	if (unlikely(status))
+		return status;
+	transfer.speed_hz = SPI_BUS_SPEED_SLOW;
+	transfer.tx_buf = dev->tx_buff;
+	transfer.rx_buf = dev->rx_buff;
+	transfer.len = size + 2;
+	spi_message_add_tail(&transfer, &msg);
+	status = spi_sync(dev->spi, &msg);
+
+	pr_debug("%s(%#x,%d) %#x .. -> %d\n",
+		__func__, reg, size, dev->tx_buff[2], status);
+
 	return status;
 }
 
@@ -403,10 +408,9 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 			{
 				case ADS1298_RREG:
 					if (single_dev)
-						status = ads_send_RREG(&dev->chip[dev_id], (char __user *)arg, cmd_nr, cmd_size, 1);
+						status = ads_send_RREG(&dev->chip[dev_id], (char __user *)arg, cmd_nr, cmd_size);
 					else
-						for (i = (dev->num_ads_chips-1); i >= 0; i--)
-							status = ads_send_RREG(&dev->chip[i], (char __user *)arg, cmd_nr, cmd_size, (i == 0) ? 1 : 0);
+						status = ads_send_RREG(&dev->chip[0], (char __user *)arg, cmd_nr, cmd_size);
 					break;
 				case ADS1298_WREG:
 					if (single_dev)
