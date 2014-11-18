@@ -80,9 +80,8 @@ static void ads129x_spi_handler(void *arg)
 	struct ads129x_dev *ads = arg;
 
 	ads->rx_count++;
-	if(ads->rx_count == ads->num_ads_chips){
+	if (ads->rx_count == ads->num_ads_chips)
 		wake_up_interruptible(&ads->wait_queue);
-	}
 }
 
 static irqreturn_t ads129x_irq_handler(int irq, void *id)
@@ -91,28 +90,28 @@ static irqreturn_t ads129x_irq_handler(int irq, void *id)
 
 	pr_debug("%s %d\n", __func__, ads_inst.sample_req);
 
-	if(!ads_inst.sample_req){
+	if (!ads_inst.sample_req)
 		return IRQ_HANDLED;
-	}
 
-	for(i=0; i<ads_inst.num_ads_chips; i++){
+	for (i=0; i<ads_inst.num_ads_chips; i++) {
 		spi_async(ads_inst.chip[i].spi, &ads_inst.chip[i].msg);
 	}
 	return IRQ_HANDLED;
 }
 
-static int ads129x_init_io_from_dt(struct device *dev, struct gpio *pgpio){
+static int ads129x_init_io_from_dt(struct device *dev, struct gpio *pgpio)
+{
 	int ret;
 	struct device_node *np = dev->of_node;
 
 	pgpio->gpio = of_get_named_gpio(np, pgpio->label, 0);
 	pr_debug("%s: %d\n", pgpio->label, pgpio->gpio);
-	if(!gpio_is_valid(pgpio->gpio)) {
+	if (!gpio_is_valid(pgpio->gpio)) {
 		dev_err(dev, "Invalid gpio\n");
 		return -EINVAL;
 	} else {
 		ret = devm_gpio_request_one(dev, pgpio->gpio, pgpio->flags, pgpio->label);
-		if(ret < 0) {
+		if (ret < 0) {
 			dev_err(dev, "Error requesting gpio %s:%d.\n",
 				pgpio->label, pgpio->gpio);
 			return ret;
@@ -122,18 +121,19 @@ static int ads129x_init_io_from_dt(struct device *dev, struct gpio *pgpio){
 	return 0;
 };
 
-static int ads129x_init_gpio_pins(struct ads129x_dev *ads, struct device *dev){
+static int ads129x_init_gpio_pins(struct ads129x_dev *ads, struct device *dev)
+{
 	int ret;
 
-	if(ads->gpio_initialized == 0) {
+	if (ads->gpio_initialized == 0) {
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_pwdn);
-		if(ret < 0)
+		if (ret < 0)
 			goto error_exit;
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_reset);
-		if(ret < 0)
+		if (ret < 0)
 			goto error_exit;
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_start);
-		if(ret < 0)
+		if (ret < 0)
 			goto error_exit;
 
 		ads->irq = irq_of_parse_and_map(of_get_child_by_name(dev->of_node, "rdy-irq"), 0);
@@ -159,7 +159,8 @@ error_exit:
 };
 
 
-static int ads_send_byte(struct ads129x_chip *dev, int data){
+static int ads_send_byte(struct ads129x_chip *dev, int data)
+{
 	int status;
 	struct spi_message msg = { };
 	struct spi_transfer transfer = { };
@@ -202,11 +203,9 @@ static int ads_send_RREG(struct ads129x_chip *chip, char __user * buf, u8 reg, u
 	int status;
 
 	status = ads_read_registers(chip, reg, size);
-	if(copy){
+	if (copy) {
 		if (likely(status == 0))
-		{
 			status = copy_to_user(buf, chip->rx_buff + 2, size);
-		}
 	}
 	return status;
 }
@@ -249,23 +248,24 @@ static int ads_set_register(struct ads129x_chip *dev, u8 reg, u8 value)
 	return spi_sync(dev->spi, &msg);
 }
 
-static loff_t ads_cdev_llseek(struct file *filp, loff_t off, int whence){
+static loff_t ads_cdev_llseek(struct file *filp, loff_t off, int whence)
+{
 	pr_debug("%s\n", __func__);
 	return 0;
 };
 
-static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos){
+static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+{
 	int i, status, bytes_send=0;
 	struct ads129x_dev *ads = filp->private_data;
 
-	if(*f_pos > 0){
+	if (*f_pos > 0)
 		return 0;
-	}
 
 	if (unlikely(down_interruptible(&ads->fop_sem)))
 		return -ERESTARTSYS;
 
-	for(i = 0; i < ads->num_ads_chips; i++){
+	for (i = 0; i < ads->num_ads_chips; i++) {
 		memset(ads->chip[i].tx_buff, 0, ACQ_BUF_SIZE);
 		ads->chip[i].transfer.tx_buf = ads->chip[i].tx_buff;
 		ads->chip[i].transfer.rx_buf = ads->chip[i].rx_buff;
@@ -282,7 +282,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 	gpio_set_value(ads129x_gpio_start.gpio, 1);
 	up(&ads->fop_sem);
 
-	while(bytes_send <= (count - (ads->num_ads_chips * ACQ_BUF_SIZE))){
+	while (bytes_send <= (count - (ads->num_ads_chips * ACQ_BUF_SIZE))) {
 		ads->rx_count = 0;
 		ads->sample_req = 1;
 		status = wait_event_interruptible_timeout(ads->wait_queue, ads->rx_count == ads->num_ads_chips, HZ*1);
@@ -293,7 +293,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 				status = -ETIMEDOUT; /* 1s without any data -> report timeout*/
 			goto read_error;
 		}
-		for(i=0; i<ads->num_ads_chips; i++){
+		for (i=0; i<ads->num_ads_chips; i++) {
 			if (unlikely(copy_to_user(&buf[bytes_send], ads->chip[i].rx_buff, ACQ_BUF_SIZE)))
 			{
 				status = -EFAULT;
@@ -309,7 +309,8 @@ read_error:
 	return status;
 };
 
-static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos){
+static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos)
+{
 	int status = -ENODEV;
 	int i;
 	struct ads129x_dev *dev = filp->private_data;
@@ -324,7 +325,7 @@ static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t 
 	if (count > SPI_BUFF_SIZE)
 		count = SPI_BUFF_SIZE;
 
-	for(i = 0; i < dev->num_ads_chips; i++){
+	for (i = 0; i < dev->num_ads_chips; i++) {
 		if (unlikely(copy_from_user(dev->chip[i].tx_buff, buf, count)))
 		{
 			status = -EFAULT;
@@ -349,7 +350,8 @@ static ssize_t ads_cdev_write(struct file *filp, const char __user *buf, size_t 
 	return status;
 };
 
-static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
+static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
 	int status = -ENODEV;
 	int i;
 	int cmd_nr = _IOC_NR(cmd) & 0x7F;
@@ -360,7 +362,7 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 
 	struct ads129x_dev *dev = filp->private_data;
 
-	if(dev_id >= dev->num_ads_chips){
+	if (dev_id >= dev->num_ads_chips) {
 		printk(KERN_WARNING "Device %d does not exist.\n", dev_id);
 		return -ENODEV;
 	}
@@ -381,10 +383,10 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 	{
 		if ((cmd_nr & ADS1298_CMD_MASK) == ADS1298_SDATAC)
 			gpio_set_value(ads129x_gpio_start.gpio, 0);
-		if(single_dev)
+		if (single_dev)
 			status = ads_send_byte(&dev->chip[dev_id], cmd_nr);
 		else {
-			for(i = (dev->num_ads_chips-1); i >= 0; i--)
+			for (i = (dev->num_ads_chips-1); i >= 0; i--)
 				status = ads_send_byte(&dev->chip[i], cmd_nr);
 		}
 		if ((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC)
@@ -402,22 +404,18 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 			switch (cmd_nr & (ADS1298_RREG | ADS1298_WREG))
 			{
 				case ADS1298_RREG:
-					if(single_dev){
+					if (single_dev)
 						status = ads_send_RREG(&dev->chip[dev_id], (char __user *)arg, cmd_nr, cmd_size, 1);
-					}else{
-						for(i = (dev->num_ads_chips-1); i >= 0; i--)
+					else
+						for (i = (dev->num_ads_chips-1); i >= 0; i--)
 							status = ads_send_RREG(&dev->chip[i], (char __user *)arg, cmd_nr, cmd_size, (i == 0) ? 1 : 0);
-					};
 					break;
 				case ADS1298_WREG:
-					if(single_dev){
+					if (single_dev)
 						status = ads_send_WREG(&dev->chip[dev_id], (char __user *)arg, cmd_nr, cmd_size);
-					}else{
-						for(i = (dev->num_ads_chips-1); i >= 0; i--){
+					else
+						for (i = (dev->num_ads_chips-1); i >= 0; i--)
 							status = ads_send_WREG(&dev->chip[i], (char __user *)arg, cmd_nr, cmd_size);
-						};
-					};
-
 					break;
 				default:
 					status = -ENOTTY;
@@ -459,7 +457,7 @@ static int ads_cdev_open(struct inode *inode, struct file *filp)
 		gpio_set_value(ads129x_gpio_reset.gpio, 1);
 		udelay(10);	// Wait for reset (>18 clks)
 
-		for(i=0; i< ads->num_ads_chips; i++) {
+		for (i=0; i< ads->num_ads_chips; i++) {
 			ads_send_byte(&ads->chip[i], ADS1298_SDATAC);
 			/* Check if chip is okay */
 			ads_read_registers(&ads->chip[i], 0x00, 1);
@@ -475,7 +473,7 @@ static int ads_cdev_open(struct inode *inode, struct file *filp)
 		/* power off the device */
 		ads_power(0);
 	} else {
-		for(i=0; i< ads->num_ads_chips; i++){
+		for (i=0; i< ads->num_ads_chips; i++) {
 			/* Set high-resolution mode (not low power)
 			* Enable multiple-readback mode (disable daisy-chain)
 			* 1kHz sampling freq */
@@ -498,7 +496,7 @@ static int ads_cdev_release(struct inode *inode, struct file *filp)
 	if (down_interruptible(&dev->fop_sem))
 		return -ERESTARTSYS;
 	gpio_set_value(ads129x_gpio_start.gpio, 0);
-	for(i=0; i < dev->num_ads_chips; i++) {
+	for (i=0; i < dev->num_ads_chips; i++) {
 		ads_set_register(&dev->chip[i], 0x03, 0b11100000);
 		ads_send_byte(&dev->chip[i], ADS1298_STANDBY);
 	}
@@ -528,19 +526,19 @@ static int ads129x_init_cdev(struct ads129x_dev *ads)
 		goto error_exit;
 	}
 	ads->cl = class_create(THIS_MODULE, "ads129x_cdev");
-	if(ads->cl == NULL){
+	if (ads->cl == NULL) {
 		printk(KERN_ERR "Could not create class!\n");
 		goto cleanup_region;
 	}
 
-	if(device_create(ads->cl, NULL, ads->dev_no, NULL, "ads129x_cdev") == NULL){
+	if (device_create(ads->cl, NULL, ads->dev_no, NULL, "ads129x_cdev") == NULL) {
 		printk(KERN_ERR "Could not create character device!\n");
 		goto cleanup_class;
 	}
 
 	cdev_init(&ads->dev, &fops );
 	ret = cdev_add(&ads->dev, ads->dev_no, 1);
-	if(ret < 0){
+	if (ret < 0) {
 		printk(KERN_ERR "Could not add character device!\n");
 		goto cleanup_dev;
 	}
@@ -557,10 +555,11 @@ error_exit:
 	return (ret < 0) ? ret : -1;
 };
 
-static int ads129x_get_free_chip_pointer(struct ads129x_chip **c){
+static int ads129x_get_free_chip_pointer(struct ads129x_chip **c)
+{
 	int i;
-	for(i=0; i < MAX_ADS_CHIPS; i++){
-		if(ads_inst.chip[i].spi == NULL){
+	for (i=0; i < MAX_ADS_CHIPS; i++) {
+		if (ads_inst.chip[i].spi == NULL) {
 			*c = &ads_inst.chip[i];
 			return 0;
 		}
@@ -578,25 +577,25 @@ static int ads129x_probe(struct spi_device *spi)
 	pr_debug("%s\n", __func__);
 
 	ret = ads129x_get_free_chip_pointer(&chip);
-	if(ret < 0){
+	if (ret < 0) {
 		printk(KERN_ERR "Error, no ads_chip structure available!\n");
 		goto error_exit;
 	}
 	chip->spi = spi;
 	chip->rx_buff = devm_kzalloc(&spi->dev, SPI_BUFF_SIZE, GFP_KERNEL | GFP_DMA);
-	if(chip->rx_buff == NULL){
+	if (chip->rx_buff == NULL) {
 		ret = -ENOMEM;
 		goto error_exit;
 	}
 
 	chip->tx_buff = devm_kzalloc(&spi->dev, SPI_BUFF_SIZE, GFP_KERNEL | GFP_DMA);
-	if(chip->tx_buff == NULL){
+	if (chip->tx_buff == NULL) {
 		ret = -ENOMEM;
 		goto error_exit;
 	}
 
 	ret = ads129x_init_gpio_pins(&ads_inst, &spi->dev);
-	if(ret < 0)
+	if (ret < 0)
 		goto error_exit;
 	ads_inst.num_ads_chips++;
 	printk(KERN_DEBUG "ADS Chip registered, %d chips total.\n", ads_inst.num_ads_chips);
@@ -649,14 +648,12 @@ static int __init ads129x_init(void)
 	ads_inst.sample_req = 0;
 	ads_inst.num_ads_chips = 0;
 
-	for(i=0; i < MAX_ADS_CHIPS; i++){
+	for (i=0; i < MAX_ADS_CHIPS; i++)
 		ads_inst.chip[i].spi = NULL;
-	}
 
 	ret = ads129x_init_cdev(&ads_inst);
-	if(ret < 0){
+	if (ret < 0)
 		goto error_exit;
-	}
 
 	init_waitqueue_head(&ads_inst.wait_queue);
 
