@@ -88,8 +88,6 @@ static irqreturn_t ads129x_irq_handler(int irq, void *id)
 {
 	int i;
 
-	pr_debug("%s %d\n", __func__, ads_inst.sample_req);
-
 	if (!ads_inst.sample_req)
 		return IRQ_HANDLED;
 
