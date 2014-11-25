@@ -107,7 +107,7 @@ static int ads129x_init_io_from_dt(struct device *dev, struct gpio *pgpio)
 	pgpio->gpio = of_get_named_gpio(np, pgpio->label, 0);
 	pr_debug("%s: %d\n", pgpio->label, pgpio->gpio);
 	if (!gpio_is_valid(pgpio->gpio)) {
-		dev_err(dev, "Invalid gpio\n");
+		dev_info(dev, "No %s gpio\n", pgpio->label);
 		return -EINVAL;
 	} else {
 		ret = devm_gpio_request_one(dev, pgpio->gpio, pgpio->flags, pgpio->label);
@@ -126,12 +126,8 @@ static int ads129x_init_gpio_pins(struct ads129x_dev *ads, struct device *dev)
 	int ret;
 
 	if (ads->gpio_initialized == 0) {
-		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_pwdn);
-		if (ret < 0)
-			goto error_exit;
-		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_reset);
-		if (ret < 0)
-			goto error_exit;
+		ads129x_init_io_from_dt(dev, &ads129x_gpio_pwdn);
+		ads129x_init_io_from_dt(dev, &ads129x_gpio_reset);
 		ret = ads129x_init_io_from_dt(dev, &ads129x_gpio_start);
 		if (ret < 0)
 			goto error_exit;
@@ -292,7 +288,7 @@ static ssize_t ads_cdev_read(struct file *filp, char __user *buf, size_t count, 
 		ads_send_byte(&ads->chip[i], ADS1298_RDATAC);
 	}
 
-	gpio_set_value(ads129x_gpio_start.gpio, 1);
+	gpio_set_value_cansleep(ads129x_gpio_start.gpio, 1);
 	up(&ads->fop_sem);
 
 	while (bytes_send <= (count - (ads->num_ads_chips * ACQ_BUF_SIZE))) {
@@ -394,16 +390,20 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 
 	if (cmd_nr < ADS1298_RREG)
 	{
-		if ((cmd_nr & ADS1298_CMD_MASK) == ADS1298_SDATAC)
-			gpio_set_value(ads129x_gpio_start.gpio, 0);
+		if ((cmd_nr & ADS1298_CMD_MASK) == ADS1298_SDATAC) {
+			pr_debug("%s gpio start=0\n", __func__);
+			gpio_set_value_cansleep(ads129x_gpio_start.gpio, 0);
+		}
 		if (single_dev)
 			status = ads_send_byte(&dev->chip[dev_id], cmd_nr);
 		else {
 			for (i = (dev->num_ads_chips-1); i >= 0; i--)
 				status = ads_send_byte(&dev->chip[i], cmd_nr);
 		}
-		if ((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC)
-			gpio_set_value(ads129x_gpio_start.gpio, 1);
+		if ((cmd_nr & ADS1298_CMD_MASK) == ADS1298_RDATAC) {
+			pr_debug("%s gpio start=1\n", __func__);
+			gpio_set_value_cansleep(ads129x_gpio_start.gpio, 1);
+		}
 	}
 	else
 	{
@@ -439,10 +439,20 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 	return status;
 };
 
-static void ads_power(int mode)
+static void ads_power_down(struct ads129x_dev *ads)
 {
-	gpio_set_value(ads129x_gpio_reset.gpio, mode);
-	gpio_set_value(ads129x_gpio_pwdn.gpio, mode);
+	if (gpio_is_valid(ads129x_gpio_reset.gpio)) {
+		pr_debug("%s gpio reset=0\n", __func__);
+		gpio_set_value_cansleep(ads129x_gpio_reset.gpio, 0);
+	}
+	if (gpio_is_valid(ads129x_gpio_pwdn.gpio)) {
+		pr_debug("%s gpio pwdn=0\n", __func__);
+		gpio_set_value_cansleep(ads129x_gpio_pwdn.gpio, 0);
+	} else {
+		int i;
+		for (i=0; i< ads->num_ads_chips; i++)
+			ads_send_byte(&ads->chip[i], ADS1298_STANDBY);
+	}
 }
 
 static int ads_cdev_open(struct inode *inode, struct file *filp)
@@ -458,15 +468,37 @@ static int ads_cdev_open(struct inode *inode, struct file *filp)
 
 	filp->private_data = ads;
 
-	gpio_set_value(ads129x_gpio_start.gpio, 0);
-	ads_power(1); /* Power up ADS chip(s) */
+	gpio_set_value_cansleep(ads129x_gpio_start.gpio, 0);
+	/* Power up ADS chip(s) */
+	if (gpio_is_valid(ads129x_gpio_reset.gpio)) {
+		pr_debug("%s gpio reset=1\n", __func__);
+		gpio_set_value_cansleep(ads129x_gpio_reset.gpio, 1);
+	}
+	if (gpio_is_valid(ads129x_gpio_pwdn.gpio)) {
+		pr_debug("%s gpio pwdn=1\n", __func__);
+		gpio_set_value_cansleep(ads129x_gpio_pwdn.gpio, 1);
+		/* Power up time is 150ms (should wait for DRDY?) */
+		msleep(150);
+	} else {
+		for (i=0; i< ads->num_ads_chips; i++)
+			ads_send_byte(&ads->chip[i], ADS1298_WAKEUP);
+		/* Wake-up time is 9 ms */
+		msleep(9);
+	}
 	do {
 		status = 0;
-		msleep(20);	/* Wait for power on, or just delay on retry */
+		/* Wait 2^16 clocks (at 2MHz) after power-on */
+		msleep(33); /* or just delay on retry */
 		/* Reset pulse */
-		gpio_set_value(ads129x_gpio_reset.gpio, 0);
-		udelay(10);
-		gpio_set_value(ads129x_gpio_reset.gpio, 1);
+		if (gpio_is_valid(ads129x_gpio_reset.gpio)) {
+			pr_debug("%s gpio reset pulse\n", __func__);
+			gpio_set_value_cansleep(ads129x_gpio_reset.gpio, 0);
+			udelay(10);
+			gpio_set_value_cansleep(ads129x_gpio_reset.gpio, 1);
+		} else {
+			for (i=0; i< ads->num_ads_chips; i++)
+				ads_send_byte(&ads->chip[i], ADS1298_RESET);
+		}
 		udelay(10);	// Wait for reset (>18 clks)
 
 		for (i=0; i< ads->num_ads_chips; i++) {
@@ -483,7 +515,7 @@ static int ads_cdev_open(struct inode *inode, struct file *filp)
 
 	if (status < 0) {
 		/* power off the device */
-		ads_power(0);
+		ads_power_down(ads);
 	} else {
 		for (i=0; i< ads->num_ads_chips; i++) {
 			/* Set high-resolution mode (not low power)
@@ -507,12 +539,11 @@ static int ads_cdev_release(struct inode *inode, struct file *filp)
 	pr_debug("%s\n", __func__);
 	if (down_interruptible(&dev->fop_sem))
 		return -ERESTARTSYS;
-	gpio_set_value(ads129x_gpio_start.gpio, 0);
+	gpio_set_value_cansleep(ads129x_gpio_start.gpio, 0);
 	for (i=0; i < dev->num_ads_chips; i++) {
 		ads_set_register(&dev->chip[i], 0x03, 0b11100000);
-		ads_send_byte(&dev->chip[i], ADS1298_STANDBY);
 	}
-	ads_power(0);
+	ads_power_down(dev);
 	up(&dev->fop_sem);
 	return 0;
 };
@@ -609,6 +640,9 @@ static int ads129x_probe(struct spi_device *spi)
 	ret = ads129x_init_gpio_pins(&ads_inst, &spi->dev);
 	if (ret < 0)
 		goto error_exit;
+	/* Put chip in standby if there's no power-down GPIO */
+	if (!gpio_is_valid(ads129x_gpio_pwdn.gpio))
+		ads_send_byte(chip, ADS1298_STANDBY);
 	ads_inst.num_ads_chips++;
 	printk(KERN_DEBUG "ADS Chip registered, %d chips total.\n", ads_inst.num_ads_chips);
 
