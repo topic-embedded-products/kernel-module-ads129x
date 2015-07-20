@@ -72,7 +72,7 @@ static struct ads129x_dev ads_inst;
 
 
 struct gpio ads129x_gpio_pwdn = { .label = "pwdn-gpio", .flags = GPIOF_OUT_INIT_LOW };
-struct gpio ads129x_gpio_reset = { .label = "reset-gpio", .flags = GPIOF_OUT_INIT_LOW };
+struct gpio ads129x_gpio_reset = { .label = "reset-gpio", .flags = GPIOF_OUT_INIT_HIGH };
 struct gpio ads129x_gpio_start = { .label = "start-gpio", .flags =GPIOF_OUT_INIT_LOW };
 
 static void ads129x_spi_handler(void *arg)
@@ -441,10 +441,6 @@ static long ads_cdev_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 
 static void ads_power_down(struct ads129x_dev *ads)
 {
-	if (gpio_is_valid(ads129x_gpio_reset.gpio)) {
-		pr_debug("%s gpio reset=0\n", __func__);
-		gpio_set_value_cansleep(ads129x_gpio_reset.gpio, 0);
-	}
 	if (gpio_is_valid(ads129x_gpio_pwdn.gpio)) {
 		pr_debug("%s gpio pwdn=0\n", __func__);
 		gpio_set_value_cansleep(ads129x_gpio_pwdn.gpio, 0);
