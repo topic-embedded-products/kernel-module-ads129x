@@ -26,6 +26,7 @@ static void usage(const char* name)
 		" -s    Start aquisition (after setting options).\n"
 		" -h    Stop aquisition (before setting options).\n"
 		" -r    Read binary data from device.\n"
+		" -f x  Set sample frequency (x=250, 500, 1000, ..., 16000)\n"
 		" ...   Other arguments ignored for now, not implemented yet.\n",
 		name, default_file_name);
 }
@@ -44,13 +45,17 @@ int main(int argc, char** argv)
 	int mode = 0;
 	int stop = 0;
 	int start = 0;
+	int freq = 0;
 	int fd;
-	while ((opt = getopt(argc, argv, "d:hnrst")) != -1)
+	while ((opt = getopt(argc, argv, "d:f:hnrst")) != -1)
 	{
 		switch (opt)
 		{
 			case 'd':
 				device_name = optarg;
+				break;
+			case 'f':
+				freq = atoi(optarg);
 				break;
 			case 'n':
 			case 't':
@@ -84,6 +89,24 @@ int main(int argc, char** argv)
 			if (ads129x_set_test_mode(fd) < 0)
 				return exit_perror("set_test_mode");
 			break;
+	}
+	if (freq)
+	{
+		unsigned char freq_code = 0xC5;
+		unsigned char divider = 8;
+		freq /= 250;
+		if (freq <= 1)
+			freq_code = 0x46;
+		else
+		{
+			do {
+				freq >>= 1;
+				--divider;
+			} while (freq && divider);
+			freq_code = 0xC0 | divider;
+		}
+		if (ads129x_set_registers(fd, 1, &freq_code, 1) < 0)
+			return exit_perror("ads129x_set_registers(frequency)");
 	}
 	if (start)
 	{
