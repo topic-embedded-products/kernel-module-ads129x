@@ -1,3 +1,11 @@
+/*
+ * ads129x series SPI ADC driver
+ *
+ * Copyright (C) 2014 Topic Embedded Products
+ *
+ * Licensed under the GPL-2.
+ */
+
 #pragma once
 
 int ads129x_start_acquisition(int ads129x_fd);

@@ -1,3 +1,11 @@
+/*
+ * ads129x series SPI ADC driver
+ *
+ * Copyright (C) 2014 Topic Embedded Products
+ *
+ * Licensed under the GPL-2.
+ */
+
 #include <linux/ioctl.h>
 
 #define ADS1298_IOC_MAGIC  'm'

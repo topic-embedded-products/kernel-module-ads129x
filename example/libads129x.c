@@ -1,3 +1,11 @@
+/*
+ * ads129x series SPI ADC driver
+ *
+ * Copyright (C) 2014 Topic Embedded Products
+ *
+ * Licensed under the GPL-2.
+ */
+
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include "libads129x.h"
